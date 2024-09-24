@@ -209,7 +209,7 @@ def get_cleaned_nimh_papers(outdir):
         .query("pdf_exists")
     )
     create_symlinks(df_transformed)
-    return df_transformed[['filename', 'manual_is_open_data','doi', 'Notes','manual_data_statements']]
+    return df_transformed[['filename', 'manual_is_open_data','doi', 'Notes','manual_data_statements',"PMID"]]
 
 def cleanup():
     """
