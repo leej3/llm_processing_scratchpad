@@ -141,6 +141,10 @@ def extract_with_llm(xml_content: bytes, llm: LLM) -> LLMExtractorMetrics:
 
 
 def main():
+    client = OpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=os.environ["OPENROUTER_API_KEY"],
+    )
     llm_model = "ai21/jamba-1-5-large"
     or_models = ["qwen/qwen-2.5-72b-instruct","openai/gpt-4o-2024-08-06","ai21/jamba-1-5-large"]
     LLM_MODELS = {
@@ -165,15 +169,27 @@ def main():
     for _, row in with_xml.iterrows():
         xml_content = row.xml
         try:
-            llm = LLM_MODELS[llm_model]
-            resp = llm.structured_predict(
-                LLMExtractorMetrics,
-                PromptTemplate("extract the metrics"),
-                xml_content=xml_content,
-                llm_model=llm.model,
+            completion = client.chat.completions.create(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are an expert at extracting information from scientific publications with a keen eye for details that when combined together allows you to summarize aspects of the publication",
+                    },
+                    {
+                        "role": "user",
+                        "content": (
+                            f"The llm model is {llm_model}. The publication in xml follows below:\n"
+                            "------\n"
+                            f"{xml_content}\n"
+                            "------"
+                        ),
+                    }
+                ],
+                model="ai21/jamba-1-5-large",
+                response_format=LLMExtractorMetrics,
             )
-            breakpoint()
-            extract_with_llm(xml_content, LLM_MODELS[llm_model])
+            llm = LLM_MODELS[llm_model]
+
         except ValidationError as e:
         # retry if it is just a validation error (the LLM can try harder next time)
             print("Validation error:", e)
