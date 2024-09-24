@@ -2,7 +2,31 @@ from pydantic import BaseModel, Field
 import pandas as pd
 from pathlib import Path
 from sklearn.model_selection import train_test_split
+import openai
+import os
 Path()
+
+import logging
+
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from llama_index.core import ChatPromptTemplate
+from llama_index.core.llms import LLM, ChatMessage
+from llama_index.llms.openai import OpenAI
+from llama_index.program.openai import OpenAIPydanticProgram
+from llama_index.core.prompts import PromptTemplate
+from pydantic import ValidationError
+
+# from pydantic import BaseModel, Field
+from llama_index.llms.openrouter import OpenRouter
+import os
+logger = logging.getLogger(__name__)
+
+
+
+client = openai.OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=os.environ["OPENROUTER_API_KEY"],
+        )
 
 class LLMExtractorMetrics(BaseModel):
     """
@@ -84,78 +108,36 @@ class LLMExtractorMetrics(BaseModel):
         description="The reasoning steps used to extract the information from the paper",
     )
 
-import logging
 
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile
-from llama_index.core import ChatPromptTemplate
-from llama_index.core.llms import LLM, ChatMessage
-from llama_index.llms.openai import OpenAI
-from llama_index.program.openai import OpenAIPydanticProgram
-from llama_index.core.prompts import PromptTemplate
-from pydantic import ValidationError
-
-# from pydantic import BaseModel, Field
-from llama_index.llms.openrouter import OpenRouter
-import os
-
-
-logger = logging.getLogger(__name__)
-app = FastAPI()
-
-
-def get_program(llm: LLM) -> OpenAIPydanticProgram:
-    prompt = ChatPromptTemplate(
-        message_templates=[
-            ChatMessage(
-                role="system",
-                content=(
-                    "You are an expert at extracting information from scientific publications with a keen eye for details that when combined together allows you to summarize aspects of the publication"
-                ),
-            ),
-            ChatMessage(
-                role="user",
-                content=(
-                    "The llm model is {llm_model}. The publication in xml follows below:\n"
+def extract_using_model(xml_content: bytes, llm_model: str) -> LLMExtractorMetrics:
+    completion = client.chat.completions.create(
+        model=llm_model,
+        messages=[
+            {
+                "role": "system",
+                "content": "You are an expert at extracting information from scientific publications with a keen eye for details that when combined together allows you to summarize aspects of the publication",
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"The llm model is {llm_model}. The publication in xml follows below:\n"
                     "------\n"
-                    "{xml_content}\n"
+                    f"{xml_content}\n"
                     "------"
                 ),
-            ),
-        ]
+            }
+        ],
+        tools=[
+            # strict=True is set by this helper method
+            openai.pydantic_function_tool(LLMExtractorMetrics),
+        ],
     )
-
-    program = OpenAIPydanticProgram.from_defaults(
-        output_cls=LLMExtractorMetrics,
-        llm=llm,
-        prompt=prompt,
-        verbose=True,
-    )
-    return program
-
-
-def extract_with_llm(xml_content: bytes, llm: LLM) -> LLMExtractorMetrics:
-    # program = get_program(llm=llm)
-    program =  llm.structured_predict(LLMExtractorMetrics, prompt_tmpl, xml_content=xml_content)
-
-    return program(xml_content=xml_content, llm_model=llm.model)
+    breakpoint()
 
 
 def main():
-    client = OpenAI(
-        base_url="https://openrouter.ai/api/v1",
-        api_key=os.environ["OPENROUTER_API_KEY"],
-    )
-    llm_model = "ai21/jamba-1-5-large"
-    or_models = ["qwen/qwen-2.5-72b-instruct","openai/gpt-4o-2024-08-06","ai21/jamba-1-5-large"]
-    LLM_MODELS = {
-        m: OpenRouter(
-        api_key=os.environ["OPENROUTER_API_KEY"],
-        model=m)
-        for m in or_models
-    }
-    # LLM_MODELS["3turbo"] = OpenAI(model="gpt-3.5-turbo-1106")
-        # "gpt-4o-2024-08-06": OpenAI(model="gpt-4o-2024-08-06")
 
+    llm_model = "ai21/jamba-1-5-large"
     df = pd.read_feather("tempdata/combined_metadata.feather") 
     # Perform the 90/10 split
     train_df, test_df = train_test_split(df, test_size=0.1, random_state=42)
@@ -169,27 +151,8 @@ def main():
     for _, row in with_xml.iterrows():
         xml_content = row.xml
         try:
-            completion = client.chat.completions.create(
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are an expert at extracting information from scientific publications with a keen eye for details that when combined together allows you to summarize aspects of the publication",
-                    },
-                    {
-                        "role": "user",
-                        "content": (
-                            f"The llm model is {llm_model}. The publication in xml follows below:\n"
-                            "------\n"
-                            f"{xml_content}\n"
-                            "------"
-                        ),
-                    }
-                ],
-                model="ai21/jamba-1-5-large",
-                response_format=LLMExtractorMetrics,
-            )
-            llm = LLM_MODELS[llm_model]
-
+            extract_using_model(xml_content, llm_model)
+            breakpoint()
         except ValidationError as e:
         # retry if it is just a validation error (the LLM can try harder next time)
             print("Validation error:", e)
