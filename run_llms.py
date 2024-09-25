@@ -5,20 +5,22 @@ from sklearn.model_selection import train_test_split
 import openai
 import os
 Path()
+import json
 
 import logging
 
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile
-from llama_index.core import ChatPromptTemplate
-from llama_index.core.llms import LLM, ChatMessage
-from llama_index.llms.openai import OpenAI
-from llama_index.program.openai import OpenAIPydanticProgram
-from llama_index.core.prompts import PromptTemplate
+# from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+# from llama_index.core import ChatPromptTemplate
+# from llama_index.core.llms import LLM, ChatMessage
+# from llama_index.llms.openai import OpenAI
+# from llama_index.program.openai import OpenAIPydanticProgram
+# from llama_index.core.prompts import PromptTemplate
+# from pydantic import BaseModel, Field
+# from llama_index.llms.openrouter import OpenRouter
 from pydantic import ValidationError
 
-# from pydantic import BaseModel, Field
-from llama_index.llms.openrouter import OpenRouter
 import os
+from datetime import datetime
 logger = logging.getLogger(__name__)
 
 
@@ -28,6 +30,49 @@ client = openai.OpenAI(
             api_key=os.environ["OPENROUTER_API_KEY"],
         )
 
+from lxml import etree
+from typing import Optional
+
+def remove_references(xml_input: str) -> str:
+    """
+    Removes the <div type="references"> section from a TEI XML string.
+
+    :param xml_input: A string containing the original TEI XML.
+    :return: A string of the modified TEI XML without the references section.
+             Returns None if an error occurs during processing.
+    """
+    try:
+        # Define the TEI namespace
+        ns = {'tei': 'http://www.tei-c.org/ns/1.0'}
+
+        # Parse the XML string
+        parser = etree.XMLParser(remove_blank_text=True)
+        root = etree.fromstring(xml_input.encode('utf-8'), parser)
+
+        # Find all <div> elements with type="references"
+        references_divs = root.findall('.//tei:div[@type="references"]', namespaces=ns)
+
+        if not references_divs:
+            logger.info("No references section found in the XML.")
+            return etree.tostring(root, pretty_print=True, encoding='UTF-8', xml_declaration=True).decode('utf-8')
+
+        for div in references_divs:
+            parent = div.getparent()
+            if parent is not None:
+                parent.remove(div)
+                logger.info("Removed a <div type=\"references\"> section.")
+
+        # Convert the modified XML tree back to a string
+        modified_xml = etree.tostring(root, pretty_print=True, encoding='UTF-8', xml_declaration=True).decode('utf-8')
+        return modified_xml
+
+    except etree.XMLSyntaxError as e:
+        logger.warning(f"XML Syntax Error: {e}")
+        return xml_input
+    except Exception as e:
+        logger.warning(f"An unexpected error occurred: {e}")
+        return xml_input
+
 class LLMExtractorMetrics(BaseModel):
     """
     Model for extracting information from scientific publications. These metrics
@@ -36,7 +81,7 @@ class LLMExtractorMetrics(BaseModel):
     Many unavailable identifiers (PMID, PMCID etc) can be found using pubmed: https://pubmed.ncbi.nlm.nih.gov/advanced/
     """
 
-    llm_model: str = Field(
+    model: str = Field(
         description="Exact verion of the llm model used to generate the data (not in publication itself but known by the model) e.g. GPT_4o_2024_08_06"
     )
     year: int = Field(
@@ -109,35 +154,82 @@ class LLMExtractorMetrics(BaseModel):
     )
 
 
-def extract_using_model(xml_content: bytes, llm_model: str) -> LLMExtractorMetrics:
-    completion = client.chat.completions.create(
-        model=llm_model,
-        messages=[
-            {
-                "role": "system",
-                "content": "You are an expert at extracting information from scientific publications with a keen eye for details that when combined together allows you to summarize aspects of the publication",
-            },
-            {
-                "role": "user",
-                "content": (
-                    f"The llm model is {llm_model}. The publication in xml follows below:\n"
-                    "------\n"
-                    f"{xml_content}\n"
-                    "------"
-                ),
-            }
-        ],
-        tools=[
-            # strict=True is set by this helper method
-            openai.pydantic_function_tool(LLMExtractorMetrics),
-        ],
-    )
-    breakpoint()
+
+def get_initial_message(model: str, xml_content: str) -> list[dict]:
+    return [
+        {
+            "role": "system",
+            "content": "You are an expert at extracting information from scientific publications with a keen eye for details that when combined together allows you to summarize aspects of the publication",
+        },
+        {
+            "role": "user",
+            "content": (
+                f"The llm model is {model}. The publication in xml follows below:\n"
+                "------\n"
+                f"{xml_content}\n"
+                "------"
+            ),
+        }
+    ]
+def extract_using_model(xml_content: str, model: str) -> LLMExtractorMetrics:
+    messages = get_initial_message(model, xml_content)
+    for attempt in range(2):
+        messages, result = attempt_extraction(messages, model)
+        if result is not None:
+            return result
+    raise ValueError("Failed to extract information from the publication")
+
+def attempt_extraction(messages: list[dict], model: str) -> None:
+    try:
+        completion = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            tools=[
+                # strict=True is set by this helper method
+                openai.pydantic_function_tool(LLMExtractorMetrics),
+            ],
+        )
+        response_message = completion.choices[0].message
+        tool_calls = response_message.tool_calls
+    except Exception as e:
+        breakpoint()
+        return messages, None
+    if not tool_calls:
+        raise NotImplementedError("No tool calls were returned by the model, not sure what to do...")
+    else:
+        # If true the model will return the name of the tool / function to call and the argument(s)
+        tool_call_id = tool_calls[0].id
+        tool_function_name = tool_calls[0].function.name
+
+        if tool_function_name == 'LLMExtractorMetrics':
+            try:
+                args_dict = json.loads(tool_calls[0].function.arguments)
+                result = LLMExtractorMetrics(**args_dict)
+                return messages, result
+            except Exception as e:
+                messages.append({
+                    "role":"tool",
+                    "tool_call_id":tool_call_id,
+                    "name": tool_function_name,
+                    "content":e,
+                })
+                return messages, None
 
 
 def main():
 
-    llm_model = "ai21/jamba-1-5-large"
+    # model = "ai21/jamba-1-5-large"
+    # model = "openai/gpt-3.5-turbo"
+    # model = "openai/o1-mini-2024-09-12" doesn't work
+    # model = "google/gemini-flash-1.5-exp" doesn't work 
+    # model = "microsoft/phi-3.5-mini-128k-instruct" doesn't work
+    # model = "qwen/qwen-2.5-72b-instruct"
+    # model = "openai/chatgpt-4o-latest"
+    # model = "openai/gpt-4o-mini-2024-07-18"
+    model = "openai/gpt-4o-mini"
+    # model = "openai/gpt-4o-2024-08-06"
+    # model = "anthropic/claude-3.5-sonnet"
+
     df = pd.read_feather("tempdata/combined_metadata.feather") 
     # Perform the 90/10 split
     train_df, test_df = train_test_split(df, test_size=0.1, random_state=42)
@@ -145,18 +237,27 @@ def main():
         train_df
         .assign(
             xml_path = lambda df: df.filename.str.replace("combined_pdfs","full_texts").str.replace(".pdf",".xml"),
-            xml = lambda x: x.xml_path.apply(lambda y: Path(y).read_text())
+            xml = lambda x: x.xml_path.apply(lambda y: Path(y).read_text()),
+            xml_for_llm = lambda x: x.xml.apply(remove_references),
         )
     )
-    for _, row in with_xml.iterrows():
-        xml_content = row.xml
+    breakpoint()
+    outputs = errors = []
+    for _, row in with_xml.head().iterrows():
+        xml_content = row.xml_for_llm
         try:
-            extract_using_model(xml_content, llm_model)
+            metrics = extract_using_model(xml_content, model)
+            outputs.append(metrics)
+        except Exception as e:
+            errors.append(e)
             breakpoint()
-        except ValidationError as e:
-        # retry if it is just a validation error (the LLM can try harder next time)
-            print("Validation error:", e)
-
+            pass
+    breakpoint()
+    df_llm = pd.DataFrame([r.model_dump(mode="json") for r in outputs])
+    df_out = train_df.join(df_llm.rename(columns={col: f"llm_{col}" for col in df_llm.columns}))
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_filepath = f"tempdata/llm_extraction_output_{model}_{timestamp}.feather"
+    df_out.to_feather(output_filepath)
 
 if __name__ == "__main__":
     main()
