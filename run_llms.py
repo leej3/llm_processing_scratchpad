@@ -179,7 +179,7 @@ def extract_using_model(xml_content: str, model: str) -> LLMExtractorMetrics:
         messages, result = attempt_extraction(messages, model)
         if result is not None:
             return result
-    raise ValueError("Failed to extract information from the publication: \n\n {messages[2:]} \n\n")
+    raise ValueError(f"Failed to extract information from the publication: \n\n {messages[2:]} \n\n")
 
 def attempt_extraction(messages: list[dict], model: str) -> None:
     try:
@@ -197,14 +197,14 @@ def attempt_extraction(messages: list[dict], model: str) -> None:
     except Exception as e:
         messages.append({
             "role":"user",
-            "content":f"{e} \n\nThat seems to have triggered an error. Can we try again...",
+            "content":f"That last attempt resulted in the above error. Can we try again...",
         })
         breakpoint()
         return messages, None
     if not tool_calls:
         messages.append({
             "role":"user",
-            "content":f"{e} \n\nThat doesn't have a tool call. Can we try again...",
+            "content":f"That doesn't have a tool call. Can we try again...",
         })
         return messages, None
     else:
@@ -244,11 +244,12 @@ def main():
     if not output_filepath.parent.exists():
         output_filepath.parent.mkdir(parents=True)
 
-    df = pd.read_feather("tempdata/combined_metadata.feather") 
+    df = pd.read_feather("tempdata/combined_metadata.feather")
     # Perform the 90/10 split
     train_df, test_df = train_test_split(df, test_size=0.1, random_state=42)
     with_xml = (
         train_df
+        .sort_index()
         .assign(
             xml_path=lambda df: df.filename.str.replace("combined_pdfs", "full_texts").str.replace(".pdf", ".xml"),
             xml=lambda x: x.xml_path.apply(lambda y: Path(y).read_text()),
