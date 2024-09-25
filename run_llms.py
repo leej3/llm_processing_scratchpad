@@ -79,8 +79,12 @@ class LLMExtractorMetrics(BaseModel):
     """
     Model for extracting information from scientific publications. These metrics
     are a summary of the publications adherence to transparent or open
-    scientific practices.
-    Many unavailable identifiers (PMID, PMCID etc) can be found using pubmed: https://pubmed.ncbi.nlm.nih.gov/advanced/
+    scientific practices. Fields for which statements are reported should be
+    taken from the input verbatim. If multiple distince statements are found
+    include all of them.
+
+    Many unavailable identifiers (PMID, PMCID etc) can be found using pubmed:
+    https://pubmed.ncbi.nlm.nih.gov/advanced/
     """
 
     model: str = Field(
@@ -109,17 +113,17 @@ class LLMExtractorMetrics(BaseModel):
     title: str = Field(description="The title of the paper")
     authors: list[str] = Field(description="The authors of the paper")
     publisher: str = Field(description="The publisher of the paper")
+    code_sharing_statement: list[str] = Field(
+        description="Statements in the paper that indicate that the code used for analysis has been shared freely online or has not been made available. Phrases like 'available upon request' or 'will be uploaded' are not considered open code but should be included here as evidence of lack of sharing.",
+    )
+    code_repository_url: str = Field(
+        description="The URL of the repository where the code and data can be found if it is included."
+    )
     is_open_code: bool = Field(
         description="Whether there is evidence that the code used for analysis in the paper has been shared online",
     )
-    code_sharing_statement: list[str] = Field(
-        description="The statement in the paper that indicates whether the code used for analysis has been shared online",
-    )
-    is_open_data: bool = Field(
-        description="Whether there is evidence that the data used for analysis in the paper has been shared online",
-    )
     data_sharing_statement: list[str] = Field(
-        description="The statement in the paper that indicates whether the data used for analysis has been shared online",
+        description="Statements in the paper that indicate that the data used for analysis has been shared freely online or has not been made available. Phrases like 'available upon request' or 'will be uploaded' are not considered open data but should be included here as evidence of lack of sharing.",
     )
     data_repository_url: str = Field(
         description="The URL of the repository where the data can be found"
@@ -127,32 +131,32 @@ class LLMExtractorMetrics(BaseModel):
     dataset_unique_identifier: list[str] = Field(
         description="Any unique identifiers the dataset may have"
     )
-    code_repository_url: str = Field(
-        description="The URL of the repository where the code and data can be found"
-    )
-    has_coi_statement: bool = Field(
-        description="Whether there is a conflict of interest statement in the paper",
+    is_open_data: bool = Field(
+        description="Whether there is evidence that the data used for analysis in the paper has been shared online. Phrases like 'available upon request' or 'will be uploaded' are not considered open data.",
     )
     coi_statement: list[str] = Field(
         description="The conflict of interest statement in the paper"
     )
+    has_coi_statement: bool = Field(
+        description="Whether there is a conflict of interest statement in the paper",
+    )
     funder: list[str] = Field(
         description="The funders of the research, may contain multiple funders",
+    )
+    funding_statement: list[str] = Field(
+        description="A statement regarding how the work was funded. This is not always included."
     )
     has_funding_statement: bool = Field(
         description="Whether there is a funding statement in the paper"
     )
-    funding_statement: list[str] = Field(
-        description="The funding statement in the paper"
+    registration_statement: list[str] = Field(
+        description="The registration statement in the paper. An empty list if none found. They are not always included."
     )
     has_registration_statement: bool = Field(
-        description="Whether there is a registration statement in the paper",
-    )
-    registration_statement: list[str] = Field(
-        description="The registration statement in the paper"
+        description="Whether there is a registration statement in the paper. False if nothing can be found.",
     )
     reasoning_steps: list[str] = Field(
-        description="The reasoning steps used to extract the information from the paper",
+        description="The reasoning steps used to extract the information from the paper. This can provide context or explanation in the decision making process. Do not leave empty.",
     )
 
 
@@ -166,7 +170,7 @@ def get_initial_message(model: str, xml_content: str) -> list[dict]:
         {
             "role": "user",
             "content": (
-                f"The llm model is {model}. The publication in xml follows below:\n"
+                f"The llm model is {model}. Please extract in accordance with the schema provided. The publication in xml follows below:\n"
                 "------\n"
                 f"{xml_content}\n"
                 "------"
@@ -228,16 +232,7 @@ def attempt_extraction(messages: list[dict], model: str) -> None:
 
 
 def main():
-
-    # model = "ai21/jamba-1-5-large"
-    # model = "openai/gpt-3.5-turbo"
-    # model = "openai/o1-mini-2024-09-12" doesn't have tools
-    # model = "google/gemini-flash-1.5-exp" fails too often
-    # model = "qwen/qwen-2.5-72b-instruct"
-    # model = "openai/chatgpt-4o-latest"
-    # model = "openai/gpt-4o-2024-08-06"
-    # model = "anthropic/claude-3.5-sonnet"
-    model = "openai/gpt-4o-mini-2024-07-18"
+    model = "openai/gpt-4o-mini"
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_filepath = Path(f"tempdata/llm_extractions/{model.replace("/","-")}_{timestamp}.feather")
     print("output_filepath", output_filepath)
@@ -270,7 +265,7 @@ def main():
             err = traceback.format_exc()
             with open(output_filepath.with_suffix(".err"), "a") as log_file:
                 log_file.write(f"Error processing row {idx}: {err}\n\n")
-            logger.warning(f"Error processing row {idx}: {err[-200:]}...")
+            logger.warning(f"Error processing row {idx}: {err[-300:]}...")
     df_llm = pd.DataFrame(outputs).set_index('idx')
     df_out = train_df.join(df_llm.rename(columns={col: f"llm_{col}" for col in df_llm.columns}))
 
