@@ -192,14 +192,14 @@ def attempt_extraction(messages: list[dict], model: str) -> None:
             ],
         )
         response_message = completion.choices[0].message
-        messages.append(response_message)
         tool_calls = response_message.tool_calls
+        messages.append(response_message)
     except Exception as e:
+        err = traceback.format_exc()
         messages.append({
             "role":"user",
-            "content":f"That last attempt resulted in the above error. Can we try again...",
+            "content":f"{err} \n\n That last attempt resulted in the above error. Can we try again...",
         })
-        breakpoint()
         return messages, None
     if not tool_calls:
         messages.append({
@@ -231,9 +231,8 @@ def main():
 
     # model = "ai21/jamba-1-5-large"
     # model = "openai/gpt-3.5-turbo"
-    # model = "openai/o1-mini-2024-09-12" doesn't work
-    # model = "google/gemini-flash-1.5-exp" doesn't work 
-    # model = "microsoft/phi-3.5-mini-128k-instruct" doesn't work
+    # model = "openai/o1-mini-2024-09-12" doesn't have tools
+    # model = "google/gemini-flash-1.5-exp" fails too often
     # model = "qwen/qwen-2.5-72b-instruct"
     # model = "openai/chatgpt-4o-latest"
     # model = "openai/gpt-4o-2024-08-06"
@@ -241,6 +240,7 @@ def main():
     model = "openai/gpt-4o-mini-2024-07-18"
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_filepath = Path(f"tempdata/llm_extractions/{model.replace("/","-")}_{timestamp}.feather")
+    print("output_filepath", output_filepath)
     if not output_filepath.parent.exists():
         output_filepath.parent.mkdir(parents=True)
 
@@ -270,7 +270,7 @@ def main():
             err = traceback.format_exc()
             with open(output_filepath.with_suffix(".err"), "a") as log_file:
                 log_file.write(f"Error processing row {idx}: {err}\n\n")
-            logger.warning(f"Error processing row {idx}: {err[:200]}...")
+            logger.warning(f"Error processing row {idx}: {err[-200:]}...")
     df_llm = pd.DataFrame(outputs).set_index('idx')
     df_out = train_df.join(df_llm.rename(columns={col: f"llm_{col}" for col in df_llm.columns}))
 
