@@ -8,7 +8,6 @@ Path()
 import json
 
 import logging
-
 # from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 # from llama_index.core import ChatPromptTemplate
 # from llama_index.core.llms import LLM, ChatMessage
@@ -32,6 +31,7 @@ client = openai.OpenAI(
 
 from lxml import etree
 from typing import Optional
+import time
 
 def remove_references(xml_input: str) -> str:
     """
@@ -225,10 +225,9 @@ def main():
     # model = "microsoft/phi-3.5-mini-128k-instruct" doesn't work
     # model = "qwen/qwen-2.5-72b-instruct"
     # model = "openai/chatgpt-4o-latest"
-    # model = "openai/gpt-4o-mini-2024-07-18"
-    model = "openai/gpt-4o-mini"
     # model = "openai/gpt-4o-2024-08-06"
     # model = "anthropic/claude-3.5-sonnet"
+    model = "openai/gpt-4o-mini-2024-07-18"
 
     df = pd.read_feather("tempdata/combined_metadata.feather") 
     # Perform the 90/10 split
@@ -236,28 +235,36 @@ def main():
     with_xml = (
         train_df
         .assign(
-            xml_path = lambda df: df.filename.str.replace("combined_pdfs","full_texts").str.replace(".pdf",".xml"),
-            xml = lambda x: x.xml_path.apply(lambda y: Path(y).read_text()),
-            xml_for_llm = lambda x: x.xml.apply(remove_references),
+            xml_path=lambda df: df.filename.str.replace("combined_pdfs", "full_texts").str.replace(".pdf", ".xml"),
+            xml=lambda x: x.xml_path.apply(lambda y: Path(y).read_text()),
+            xml_for_llm=lambda x: x.xml.apply(remove_references),
         )
     )
-    breakpoint()
-    outputs = errors = []
-    for _, row in with_xml.head().iterrows():
+
+    outputs = []
+    for idx, row in with_xml.head().iterrows():
+        print(f"Processing row {idx}")
         xml_content = row.xml_for_llm
         try:
-            metrics = extract_using_model(xml_content, model)
+            metrics = extract_using_model(xml_content, model).model_dump(mode="json")
+            metrics['idx'] = idx
             outputs.append(metrics)
         except Exception as e:
-            errors.append(e)
-            breakpoint()
-            pass
-    breakpoint()
-    df_llm = pd.DataFrame([r.model_dump(mode="json") for r in outputs])
+            with open("tempdata/llm_extraction/error_log.txt", "a") as log_file:
+                log_file.write(f"Error processing row {idx}: {e}\n\n")
+            logger.warning(f"Error processing row {idx}: {e}")
+    df_llm = pd.DataFrame(outputs).set_index('idx')
     df_out = train_df.join(df_llm.rename(columns={col: f"llm_{col}" for col in df_llm.columns}))
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_filepath = f"tempdata/llm_extraction_output_{model}_{timestamp}.feather"
+    output_filepath = Path(f"tempdata/llm_extractions/{model.replace("/","-")}_{timestamp}.feather")
+    if not output_filepath.parent.exists():
+        output_filepath.parent.mkdir(parents=True)
     df_out.to_feather(output_filepath)
+    logger.info(f"Saved output to {output_filepath}")
 
 if __name__ == "__main__":
+    start_time = time.time()
     main()
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    print(f"Execution time: {elapsed_time:.2f} seconds")
