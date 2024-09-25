@@ -8,6 +8,7 @@ Path()
 import json
 import pickle
 import logging
+import traceback
 # from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 # from llama_index.core import ChatPromptTemplate
 # from llama_index.core.llms import LLM, ChatMessage
@@ -21,6 +22,7 @@ from pydantic import ValidationError
 import os
 from datetime import datetime
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 
@@ -262,11 +264,12 @@ def main():
             metrics = extract_using_model(xml_content, model).model_dump(mode="json")
             metrics['idx'] = idx
             outputs.append(metrics)
-            output_filepath.with_suffix("pkl").write_bytes(pickle.dumps(metrics))
+            output_filepath.with_suffix(".pkl").write_bytes(pickle.dumps(metrics))
         except Exception as e:
-            with open(f"tempdata/llm_extractions/error_log_{timestamp}.txt", "a") as log_file:
-                log_file.write(f"Error processing row {idx}: {e}\n\n")
-            logger.warning(f"Error processing row {idx}: {e[:200]}...")
+            err = traceback.format_exc()
+            with open(output_filepath.with_suffix(".err"), "a") as log_file:
+                log_file.write(f"Error processing row {idx}: {err}\n\n")
+            logger.warning(f"Error processing row {idx}: {err[:200]}...")
     df_llm = pd.DataFrame(outputs).set_index('idx')
     df_out = train_df.join(df_llm.rename(columns={col: f"llm_{col}" for col in df_llm.columns}))
 
