@@ -6,7 +6,7 @@ import openai
 import os
 Path()
 import json
-
+import pickle
 import logging
 # from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 # from llama_index.core import ChatPromptTemplate
@@ -173,11 +173,11 @@ def get_initial_message(model: str, xml_content: str) -> list[dict]:
     ]
 def extract_using_model(xml_content: str, model: str) -> LLMExtractorMetrics:
     messages = get_initial_message(model, xml_content)
-    for attempt in range(2):
+    for attempt in range(4):
         messages, result = attempt_extraction(messages, model)
         if result is not None:
             return result
-    raise ValueError("Failed to extract information from the publication")
+    raise ValueError("Failed to extract information from the publication: \n\n {messages[2:]} \n\n")
 
 def attempt_extraction(messages: list[dict], model: str) -> None:
     try:
@@ -190,12 +190,21 @@ def attempt_extraction(messages: list[dict], model: str) -> None:
             ],
         )
         response_message = completion.choices[0].message
+        messages.append(response_message)
         tool_calls = response_message.tool_calls
     except Exception as e:
+        messages.append({
+            "role":"user",
+            "content":f"{e} \n\nThat seems to have triggered an error. Can we try again...",
+        })
         breakpoint()
         return messages, None
     if not tool_calls:
-        raise NotImplementedError("No tool calls were returned by the model, not sure what to do...")
+        messages.append({
+            "role":"user",
+            "content":f"{e} \n\nThat doesn't have a tool call. Can we try again...",
+        })
+        return messages, None
     else:
         # If true the model will return the name of the tool / function to call and the argument(s)
         tool_call_id = tool_calls[0].id
@@ -228,6 +237,10 @@ def main():
     # model = "openai/gpt-4o-2024-08-06"
     # model = "anthropic/claude-3.5-sonnet"
     model = "openai/gpt-4o-mini-2024-07-18"
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_filepath = Path(f"tempdata/llm_extractions/{model.replace("/","-")}_{timestamp}.feather")
+    if not output_filepath.parent.exists():
+        output_filepath.parent.mkdir(parents=True)
 
     df = pd.read_feather("tempdata/combined_metadata.feather") 
     # Perform the 90/10 split
@@ -242,23 +255,21 @@ def main():
     )
 
     outputs = []
-    for idx, row in with_xml.head().iterrows():
+    for idx, row in with_xml.iterrows():
         print(f"Processing row {idx}")
         xml_content = row.xml_for_llm
         try:
             metrics = extract_using_model(xml_content, model).model_dump(mode="json")
             metrics['idx'] = idx
             outputs.append(metrics)
+            output_filepath.with_suffix("pkl").write_bytes(pickle.dumps(metrics))
         except Exception as e:
-            with open("tempdata/llm_extraction/error_log.txt", "a") as log_file:
+            with open(f"tempdata/llm_extractions/error_log_{timestamp}.txt", "a") as log_file:
                 log_file.write(f"Error processing row {idx}: {e}\n\n")
-            logger.warning(f"Error processing row {idx}: {e}")
+            logger.warning(f"Error processing row {idx}: {e[:200]}...")
     df_llm = pd.DataFrame(outputs).set_index('idx')
     df_out = train_df.join(df_llm.rename(columns={col: f"llm_{col}" for col in df_llm.columns}))
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_filepath = Path(f"tempdata/llm_extractions/{model.replace("/","-")}_{timestamp}.feather")
-    if not output_filepath.parent.exists():
-        output_filepath.parent.mkdir(parents=True)
+
     df_out.to_feather(output_filepath)
     logger.info(f"Saved output to {output_filepath}")
 
