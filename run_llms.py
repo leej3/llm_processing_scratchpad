@@ -293,7 +293,11 @@ def main():
             logger.warning(f"Error processing row {idx}: {err[-300:]}...")
     df_llm = pd.DataFrame(outputs).set_index('idx').assign(reasoning_steps=lambda x: x["reasoning_steps"].astype(str))
     df_out = df_llm.rename(columns={col: f"llm_{col}" for col in df_llm.columns}).join(train_df)
-
+    (
+        # save the mismatched predictions to a tsv
+        df_out[["manual_is_open_data","llm_is_open_data","llm_data_sharing_statement","manual_data_statements","doi","filename","llm_reasoning_steps"]]
+        .to_csv(str(output_filepath).replace(".feather","_misses.tsv"),sep="\t",index=False)
+    )
     df_out.to_feather(output_filepath)
     print(f"Saved output to {output_filepath}")
 
