@@ -21,12 +21,12 @@ oddpub = (
     [["filename","oddpub_is_open_data"]]
 )
 sonnet35 = (
-    pd.read_feather("tempdata/llm_extractions/anthropic-claude-3.5-sonnet_20240926_161408.feather")
+    pd.read_feather("tempdata/llm_extractions/anthropic-claude-3.5-sonnet_20240926_172852.feather")
     .rename(columns={"llm_is_open_data":"sonnet35_is_open_data"})
     [["filename","sonnet35_is_open_data"]]
 )
 df = (
-    pd.read_feather("tempdata/llm_extractions/openai-gpt-4o-mini_20240926_162835.feather")
+    pd.read_feather("tempdata/llm_extractions/openai-gpt-4o-mini_20240926_162835.intermediate.feather")
     .rename(columns={"llm_is_open_data":"4o-mini_is_open_data"}).merge(
         sonnet35,on="filename",how="inner"
     )

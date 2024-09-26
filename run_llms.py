@@ -198,8 +198,8 @@ def attempt_extraction(messages: list[dict], model: str) -> None:
 
 
 def main():
-    # model = "openai/gpt-4o-mini"
-    model = "anthropic/claude-3.5-sonnet"
+    model = "openai/gpt-4o-mini"
+    # model = "anthropic/claude-3.5-sonnet"
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_filepath = Path(f"tempdata/llm_extractions/{model.replace("/","-")}_{timestamp}.feather")
