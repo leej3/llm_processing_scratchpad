@@ -4,22 +4,12 @@ from pathlib import Path
 from sklearn.model_selection import train_test_split
 import openai
 import os
-Path()
 import json
 import pickle
 import logging
 import traceback
-# from fastapi import FastAPI, File, HTTPException, Query, UploadFile
-# from llama_index.core import ChatPromptTemplate
-# from llama_index.core.llms import LLM, ChatMessage
-# from llama_index.llms.openai import OpenAI
-# from llama_index.program.openai import OpenAIPydanticProgram
-# from llama_index.core.prompts import PromptTemplate
-# from pydantic import BaseModel, Field
-# from llama_index.llms.openrouter import OpenRouter
-from pydantic import ValidationError
-
-import os
+from lxml import etree
+import time
 from datetime import datetime
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -31,9 +21,6 @@ client = openai.OpenAI(
             api_key=os.environ["OPENROUTER_API_KEY"],
         )
 
-from lxml import etree
-from typing import Optional
-import time
 
 def remove_references(xml_input: str) -> str:
     """
@@ -202,7 +189,7 @@ def attempt_extraction(messages: list[dict], model: str) -> None:
                 return messages, None
             else:
                 raise e
-    except Exception as e:
+    except Exception:
         err = traceback.format_exc()
         messages.append({
             "role":"user",
@@ -212,7 +199,7 @@ def attempt_extraction(messages: list[dict], model: str) -> None:
     if not tool_calls:
         messages.append({
             "role":"user",
-            "content":f"That doesn't have a tool call. Can we try again...",
+            "content":"That doesn't have a tool call. Can we try again...",
         })
         return messages, None
     else:
@@ -276,7 +263,7 @@ def main():
             messagesdir = output_filepath.parent/ output_filepath.stem
             messagesdir.mkdir(exist_ok=True)
             (messagesdir / f"{idx}.pkl").write_bytes(pickle.dumps(messages))
-        except Exception as e:
+        except Exception:
             err = traceback.format_exc()
             with open(output_filepath.with_suffix(".err"), "a") as log_file:
                 log_file.write(f"Error processing row {idx}: {err}\n\n")

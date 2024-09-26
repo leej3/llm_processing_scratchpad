@@ -1,4 +1,3 @@
-from pydantic import BaseModel, Field
 import re
 from difflib import SequenceMatcher
 import pandas as pd
@@ -163,7 +162,7 @@ def create_symlinks(df):
             row['filename'].unlink()
         try:
             row['filename'].symlink_to(Path(row['Filename']).absolute())
-        except Exception as e:
+        except Exception:
             breakpoint()
 
 def get_cleaned_layers_papers(outdir):
