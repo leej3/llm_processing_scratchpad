@@ -79,12 +79,27 @@ class LLMExtractorMetrics(BaseModel):
     """
     Model for extracting information from scientific publications. These metrics
     are a summary of the publications adherence to transparent or open
-    scientific practices. Fields for which statements are reported should be
-    taken from the input verbatim. If multiple distince statements are found
-    include all of them.
+    scientific practices. With regards to code and data this implies that the
+    corresponding artifact has been shared (note the past tense). "Will be
+    shared" or "upon request" is a statement implying lack of sharing. An
+    inaccessible sharing statement in the appendix or supplmentary
+    materials is likely a statement of sharing and should imply True for the
+    corresponding boolean field.
 
-    Many unavailable identifiers (PMID, PMCID etc) can be found using pubmed:
-    https://pubmed.ncbi.nlm.nih.gov/advanced/
+    Fields for which statements are reported should be taken from the input
+    verbatim without concern about the resulting grammatical incorrectness that
+    might occurring from only requiring part of a sentence etc. A statement can
+    comprise multiple sentences. Include any statements that may be helpful and
+    if multiple distinct statements are found include all of them. Each
+    statement should be surrounded by double quotes and use backslash to escape
+    any double quote in the statements themselves. Any ambiguity the relevance
+    of the statement recorded can be expressed in the reasoning_steps field.
+
+    For the reasoning_steps field, verbosely include any reasoning steps used to
+    extract the information for each field.
+
+    When there is no way to infer the information use the specified default: for
+    boolean fields this is False and for statements it is an empty list.
     """
 
     model: str = Field(
@@ -114,25 +129,25 @@ class LLMExtractorMetrics(BaseModel):
     authors: list[str] = Field(description="The authors of the paper")
     publisher: str = Field(description="The publisher of the paper")
     code_sharing_statement: list[str] = Field(
-        description="Statements in the paper that indicate that the code used for analysis has been shared freely online or has not been made available. Phrases like 'available upon request' or 'will be uploaded' are not considered open code but should be included here as evidence of lack of sharing.",
+        description="Statements in the paper that indicate that the code used for analysis has been shared freely online or has not been made available.",
     )
     code_repository_url: str = Field(
         description="The URL of the repository where the code and data can be found if it is included."
     )
     is_open_code: bool = Field(
-        description="Whether there is evidence that the code used for analysis in the paper has been shared online",
+        description="Whether there is evidence that the code used for analysis in the paper has been shared online. The fields code_sharing_statement and code_repository_url should be used to determine this.",
     )
     data_sharing_statement: list[str] = Field(
-        description="Statements in the paper that indicate that the data used for analysis has been shared freely online or has not been made available. Phrases like 'available upon request' or 'will be uploaded' are not considered open data but should be included here as evidence of lack of sharing.",
+        description="Statements in the paper that indicate that the data used for analysis has been shared freely online or has not been made available.",
     )
     data_repository_url: str = Field(
-        description="The URL of the repository where the data can be found"
+        description="The URL of the repository where the data can be found if it is provided"
     )
     dataset_unique_identifier: list[str] = Field(
         description="Any unique identifiers the dataset may have"
     )
     is_open_data: bool = Field(
-        description="Whether there is evidence that the data used for analysis in the paper has been shared online. Phrases like 'available upon request' or 'will be uploaded' are not considered open data.",
+        description="Whether there is evidence that the data used for analysis in the paper has been shared online. The fields data_sharing_statment data_repository_url and dataset_unique_identifier should be used to determine this.",
     )
     coi_statement: list[str] = Field(
         description="The conflict of interest statement in the paper"
@@ -156,7 +171,7 @@ class LLMExtractorMetrics(BaseModel):
         description="Whether there is a registration statement in the paper. False if nothing can be found.",
     )
     reasoning_steps: list[str] = Field(
-        description="The reasoning steps used to extract the information from the paper. This can provide context or explanation in the decision making process. Do not leave empty.",
+        description="The reasoning steps used to extract the information from the paper. This can verbosely provide context or explanation in the decision making process. Be verbose for this field. Do not leave empty.",
     )
 
 
