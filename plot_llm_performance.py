@@ -52,9 +52,6 @@ def calculate_confusion_matrix_values(df, actual_col, predicted_col):
     percentages = [f"{(v / sum(values)) * 100:.1f}%" for v in values]
     return values, percentages
 
-# Confusion matrix for oddpub
-oddpub_values, oddpub_percentages = calculate_confusion_matrix_values(df, 'manual_is_open_data', 'oddpub_is_open_data')
-
 # Confusion matrix for LLM
 plot_values = {
 "sonnet35": calculate_confusion_matrix_values(df, 'manual_is_open_data', 'sonnet35_is_open_data'),
