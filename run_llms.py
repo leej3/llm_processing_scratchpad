@@ -179,10 +179,10 @@ def get_initial_message(model: str, xml_content: str) -> list[dict]:
     ]
 def extract_using_model(xml_content: str, model: str) -> LLMExtractorMetrics:
     messages = get_initial_message(model, xml_content)
-    for attempt in range(4):
+    for attempt in range(6):
         messages, result = attempt_extraction(messages, model)
         if result is not None:
-            return result
+            return messages, result
     raise ValueError(f"Failed to extract information from the publication: \n\n {messages[2:]} \n\n")
 
 def attempt_extraction(messages: list[dict], model: str) -> None:
@@ -195,9 +195,19 @@ def attempt_extraction(messages: list[dict], model: str) -> None:
                 openai.pydantic_function_tool(LLMExtractorMetrics),
             ],
         )
-        response_message = completion.choices[0].message
-        tool_calls = response_message.tool_calls
-        messages.append(response_message)
+        try:
+            response_message = completion.choices[0].message
+            tool_calls = response_message.tool_calls
+            messages.append(response_message)
+        except TypeError as e:
+            if "NoneType" in str(e):
+                messages.append({
+                    "role":"user",
+                    "content":f"{err} \n\n That last attempt seemed to have no output. Try to populate the schema correctly...",
+                })
+                return messages, None
+            else:
+                raise e
     except Exception as e:
         err = traceback.format_exc()
         messages.append({
@@ -235,15 +245,19 @@ def main():
     model = "openai/gpt-4o-mini"
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_filepath = Path(f"tempdata/llm_extractions/{model.replace("/","-")}_{timestamp}.feather")
-    print("output_filepath", output_filepath)
+    print("output_filepath:", output_filepath)
     if not output_filepath.parent.exists():
         output_filepath.parent.mkdir(parents=True)
 
     df = pd.read_feather("tempdata/combined_metadata.feather")
     # Perform the 90/10 split
     train_df, test_df = train_test_split(df, test_size=0.1, random_state=42)
+    if os.environ.get("VALIDATE", False):
+        pipeline_df = test_df
+    else:
+        pipeline_df = train_df
     with_xml = (
-        train_df
+        pipeline_df
         .sort_index()
         .assign(
             xml_path=lambda df: df.filename.str.replace("combined_pdfs", "full_texts").str.replace(".pdf", ".xml"),
@@ -257,10 +271,15 @@ def main():
         print(f"Processing row {idx}")
         xml_content = row.xml_for_llm
         try:
-            metrics = extract_using_model(xml_content, model).model_dump(mode="json")
+            messages, result = extract_using_model(xml_content, model)
+            metrics = result.model_dump(mode="json")
             metrics['idx'] = idx
             outputs.append(metrics)
-            output_filepath.with_suffix(".pkl").write_bytes(pickle.dumps(metrics))
+            # store intermediate results and chat history
+            output_filepath.with_suffix(".pkl").write_bytes(pickle.dumps(outputs))
+            messagesdir = output_filepath.parent/ output_filepath.stem
+            messagesdir.mkdir(exist_ok=True)
+            (messagesdir / f"{output_filepath.stem}.pkl").write_bytes(pickle.dumps(messages))
         except Exception as e:
             err = traceback.format_exc()
             with open(output_filepath.with_suffix(".err"), "a") as log_file:
@@ -270,7 +289,7 @@ def main():
     df_out = train_df.join(df_llm.rename(columns={col: f"llm_{col}" for col in df_llm.columns}))
 
     df_out.to_feather(output_filepath)
-    logger.info(f"Saved output to {output_filepath}")
+    print(f"Saved output to {output_filepath}")
 
 if __name__ == "__main__":
     start_time = time.time()
