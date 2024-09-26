@@ -67,12 +67,12 @@ class LLMExtractorMetrics(BaseModel):
     Model for extracting information from scientific publications. These metrics
     are a summary of the publications adherence to transparent or open
     scientific practices. With regards to code and data this implies that the
-    corresponding artifact has been shared (note the past tense). "Will be
-    shared", "by request", or "upon request" is a statement implying lack of
-    sharing of the corresponding study artifacts. An inaccessible sharing
-    statement in the appendix or supplmentary materials is likely a statement of
-    successful sharing and should imply True for the corresponding boolean
-    field.
+    corresponding artifact has been shared, not "will be shared" or shared "upon
+    request". "Will be shared", "by request", or "upon request" is a statement
+    implying lack of sharing of the corresponding study artifacts. An
+    inaccessible sharing statement in the appendix or supplmentary materials is
+    likely a statement of successful sharing and should imply True for the
+    corresponding boolean field.
 
     Fields for which statements are reported should be taken from the input
     verbatim without concern about the resulting grammatical incorrectness that
@@ -198,8 +198,8 @@ def attempt_extraction(messages: list[dict], model: str) -> None:
 
 
 def main():
-    model = "openai/gpt-4o-mini"
-    # model = "anthropic/claude-3.5-sonnet"
+    # model = "openai/gpt-4o-mini"
+    model = "anthropic/claude-3.5-sonnet"
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_filepath = Path(f"tempdata/llm_extractions/{model.replace("/","-")}_{timestamp}.feather")
