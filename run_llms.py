@@ -88,18 +88,7 @@ class LLMExtractorMetrics(BaseModel):
 
     Fields for which statements are reported should be taken from the input
     verbatim without concern about the resulting grammatical incorrectness that
-    might occurring from only requiring part of a sentence etc. A statement can
-    comprise multiple sentences. Include any statements that may be helpful and
-    if multiple distinct statements are found include all of them. Each
-    statement should be surrounded by double quotes and use backslash to escape
-    any double quote in the statements themselves. Any ambiguity the relevance
-    of the statement recorded can be expressed in the reasoning_steps field.
-
-    For the reasoning_steps field, verbosely include any reasoning steps used to
-    extract the information for each field.
-
-    When there is no way to infer the information use the specified default: for
-    boolean fields this is False and for statements it is an empty list.
+    might occurring from only requiring part of a sentence etc.
     """
 
     model: str = Field(
@@ -149,31 +138,31 @@ class LLMExtractorMetrics(BaseModel):
     is_open_data: bool = Field(
         description="Whether there is evidence that the data used for analysis in the paper has been shared online. The fields data_sharing_statment data_repository_url and dataset_unique_identifier should be used to determine this.",
     )
-    coi_statement: list[str] = Field(
-        description="The conflict of interest statement in the paper"
-    )
-    has_coi_statement: bool = Field(
-        description="Whether there is a conflict of interest statement in the paper",
-    )
-    funder: list[str] = Field(
-        description="The funders of the research, may contain multiple funders",
-    )
-    funding_statement: list[str] = Field(
-        description="A statement regarding how the work was funded. This is not always included."
-    )
-    has_funding_statement: bool = Field(
-        description="Whether there is a funding statement in the paper"
-    )
-    registration_statement: list[str] = Field(
-        description="The registration statement in the paper. An empty list if none found. They are not always included."
-    )
-    has_registration_statement: bool = Field(
-        description="Whether there is a registration statement in the paper. False if nothing can be found.",
-    )
     reasoning_steps: list[str] = Field(
-        description="The reasoning steps used to extract the information from the paper. This can verbosely provide context or explanation in the decision making process. Be verbose for this field. Do not leave empty.",
+        description="The reasoning steps used to extract the information from the paper. This can verbosely provide context or explanation in the decision making process. Be verbose for this field. Do not leave empty. Each statement should be surrounded by double quotes and use backslash to escape any double quote in the statements themselves. Do not use tabs or newline characters at all.",
     )
 
+    # coi_statement: list[str] = Field(
+    #     description="The conflict of interest statement in the paper"
+    # )
+    # has_coi_statement: bool = Field(
+    #     description="Whether there is a conflict of interest statement in the paper",
+    # )
+    # funder: list[str] = Field(
+    #     description="The funders of the research, may contain multiple funders",
+    # )
+    # funding_statement: list[str] = Field(
+    #     description="A statement regarding how the work was funded. This is not always included."
+    # )
+    # has_funding_statement: bool = Field(
+    #     description="Whether there is a funding statement in the paper"
+    # )
+    # registration_statement: list[str] = Field(
+    #     description="The registration statement in the paper. An empty list if none found. They are not always included."
+    # )
+    # has_registration_statement: bool = Field(
+    #     description="Whether there is a registration statement in the paper. False if nothing can be found.",
+    # )
 
 
 def get_initial_message(model: str, xml_content: str) -> list[dict]:
@@ -258,7 +247,7 @@ def attempt_extraction(messages: list[dict], model: str) -> None:
 
 def main():
     model = "openai/gpt-4o-mini"
-    model = "anthropic/claude-3.5-sonnet"
+    # model = "anthropic/claude-3.5-sonnet"
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_filepath = Path(f"tempdata/llm_extractions/{model.replace("/","-")}_{timestamp}.feather")
@@ -274,7 +263,7 @@ def main():
     else:
         pipeline_df = train_df
     with_xml = (
-        pipeline_df.head()
+        pipeline_df
         .sort_index()
         .assign(
             xml_path=lambda df: df.filename.str.replace("combined_pdfs", "full_texts").str.replace(".pdf", ".xml"),
@@ -302,7 +291,7 @@ def main():
             with open(output_filepath.with_suffix(".err"), "a") as log_file:
                 log_file.write(f"Error processing row {idx}: {err}\n\n")
             logger.warning(f"Error processing row {idx}: {err[-300:]}...")
-    df_llm = pd.DataFrame(outputs).set_index('idx')
+    df_llm = pd.DataFrame(outputs).set_index('idx').assign(reasoning_steps=lambda x: x["reasoning_steps"].astype(str))
     df_out = df_llm.rename(columns={col: f"llm_{col}" for col in df_llm.columns}).join(train_df)
 
     df_out.to_feather(output_filepath)
