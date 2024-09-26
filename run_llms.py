@@ -218,7 +218,7 @@ def attempt_extraction(messages: list[dict], model: str) -> None:
             if "NoneType" in str(e):
                 messages.append({
                     "role":"user",
-                    "content":f"{err} \n\n That last attempt seemed to have no output. Try to populate the schema correctly...",
+                    "content":f"{e} \n\n That last attempt seemed to have no output. Try to populate the schema correctly...",
                 })
                 return messages, None
             else:
@@ -258,6 +258,8 @@ def attempt_extraction(messages: list[dict], model: str) -> None:
 
 def main():
     model = "openai/gpt-4o-mini"
+    model = "anthropic/claude-3.5-sonnet"
+
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_filepath = Path(f"tempdata/llm_extractions/{model.replace("/","-")}_{timestamp}.feather")
     print("output_filepath:", output_filepath)
@@ -272,7 +274,7 @@ def main():
     else:
         pipeline_df = train_df
     with_xml = (
-        pipeline_df
+        pipeline_df.head()
         .sort_index()
         .assign(
             xml_path=lambda df: df.filename.str.replace("combined_pdfs", "full_texts").str.replace(".pdf", ".xml"),
