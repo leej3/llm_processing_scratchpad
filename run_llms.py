@@ -81,10 +81,11 @@ class LLMExtractorMetrics(BaseModel):
     are a summary of the publications adherence to transparent or open
     scientific practices. With regards to code and data this implies that the
     corresponding artifact has been shared (note the past tense). "Will be
-    shared" or "upon request" is a statement implying lack of sharing. An
-    inaccessible sharing statement in the appendix or supplmentary
-    materials is likely a statement of sharing and should imply True for the
-    corresponding boolean field.
+    shared", "by request", or "upon request" is a statement implying lack of
+    sharing of the corresponding study artifacts. An inaccessible sharing
+    statement in the appendix or supplmentary materials is likely a statement of
+    successful sharing and should imply True for the corresponding boolean
+    field.
 
     Fields for which statements are reported should be taken from the input
     verbatim without concern about the resulting grammatical incorrectness that
@@ -142,27 +143,16 @@ class LLMExtractorMetrics(BaseModel):
         description="The reasoning steps used to extract the information from the paper. This can verbosely provide context or explanation in the decision making process. Be verbose for this field. Do not leave empty. Each statement should be surrounded by double quotes and use backslash to escape any double quote in the statements themselves. Do not use tabs or newline characters at all.",
     )
 
-    # coi_statement: list[str] = Field(
-    #     description="The conflict of interest statement in the paper"
-    # )
-    # has_coi_statement: bool = Field(
-    #     description="Whether there is a conflict of interest statement in the paper",
-    # )
-    # funder: list[str] = Field(
-    #     description="The funders of the research, may contain multiple funders",
-    # )
-    # funding_statement: list[str] = Field(
-    #     description="A statement regarding how the work was funded. This is not always included."
-    # )
-    # has_funding_statement: bool = Field(
-    #     description="Whether there is a funding statement in the paper"
-    # )
-    # registration_statement: list[str] = Field(
-    #     description="The registration statement in the paper. An empty list if none found. They are not always included."
-    # )
-    # has_registration_statement: bool = Field(
-    #     description="Whether there is a registration statement in the paper. False if nothing can be found.",
-    # )
+    funder: list[str] = Field(
+        description="The funders of the research, may contain multiple funders",
+    )
+    funding_statement: list[str] = Field(
+        description="A statement regarding how the work was funded. This is not always included."
+    )
+    has_funding_statement: bool = Field(
+        description="Whether there is a funding statement in the paper"
+    )
+
 
 
 def get_initial_message(model: str, xml_content: str) -> list[dict]:
@@ -285,7 +275,7 @@ def main():
             output_filepath.with_suffix(".pkl").write_bytes(pickle.dumps(outputs))
             messagesdir = output_filepath.parent/ output_filepath.stem
             messagesdir.mkdir(exist_ok=True)
-            (messagesdir / f"{output_filepath.stem}.pkl").write_bytes(pickle.dumps(messages))
+            (messagesdir / f"{idx}.pkl").write_bytes(pickle.dumps(messages))
         except Exception as e:
             err = traceback.format_exc()
             with open(output_filepath.with_suffix(".err"), "a") as log_file:
@@ -295,7 +285,9 @@ def main():
     df_out = df_llm.rename(columns={col: f"llm_{col}" for col in df_llm.columns}).join(train_df)
     (
         # save the mismatched predictions to a tsv
-        df_out[["manual_is_open_data","llm_is_open_data","llm_data_sharing_statement","manual_data_statements","doi","filename","llm_reasoning_steps"]]
+        df_out
+        .query("manual_is_open_data != llm_is_open_data")
+        [["manual_is_open_data","llm_is_open_data","llm_data_sharing_statement","manual_data_statements","doi","filename","llm_reasoning_steps"]]
         .to_csv(str(output_filepath).replace(".feather","_misses.tsv"),sep="\t",index=False)
     )
     df_out.to_feather(output_filepath)
