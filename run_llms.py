@@ -303,7 +303,7 @@ def main():
                 log_file.write(f"Error processing row {idx}: {err}\n\n")
             logger.warning(f"Error processing row {idx}: {err[-300:]}...")
     df_llm = pd.DataFrame(outputs).set_index('idx')
-    df_out = train_df.join(df_llm.rename(columns={col: f"llm_{col}" for col in df_llm.columns}))
+    df_out = df_llm.rename(columns={col: f"llm_{col}" for col in df_llm.columns}).join(train_df)
 
     df_out.to_feather(output_filepath)
     print(f"Saved output to {output_filepath}")
