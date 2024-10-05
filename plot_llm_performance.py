@@ -1,4 +1,3 @@
-
 import pandas as pd
 import pickle
 from pathlib import Path
@@ -65,7 +64,7 @@ plot_values = {
 
 # Create the bar chart
 fig = go.Figure(data=[
-    go.Bar(name=key, x=categories, y=val[0], text=val[1], textposition='auto') for key, val in plot_values.items()
+    go.Bar(name=key, x=categories, y=val[0]) for key, val in plot_values.items()
     # go.Bar(name='LLM', x=categories, y=llm_values, text=llm_percentages, textposition='auto', marker_color='lightblue')
 
 ])
@@ -76,6 +75,9 @@ fig.update_layout(
     xaxis_title='Categories',
     yaxis_title='Count',
     barmode='group',
+    font=dict(
+        size=22  # Increase the font size as needed
+    )
 )
 
 # Show the figure
